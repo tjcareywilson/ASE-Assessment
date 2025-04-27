@@ -1,0 +1,73 @@
+#code block 3
+
+import pandas as pd
+
+gdp_file = "/Users/thomascarey-wilson/Downloads/regionalgrossdomesticproductgdpbyallitlregions.xlsx"
+
+df_table7 = pd.read_excel(gdp_file, sheet_name="Table 7", header=1)
+df_table7 = df_table7[df_table7["ITL"] == "ITL3"][["Region name", "2022"]]
+df_table7.rename(columns={"2022": "Table7_2022"}, inplace=True)
+
+df_table13 = pd.read_excel(gdp_file, sheet_name="Table 13", header=1)
+df_table13 = df_table13[df_table13["ITL"] == "ITL3"][["Region name", "2022"]]
+df_table13.rename(columns={"2022": "Table13_2022"}, inplace=True)
+
+df_gdp = pd.merge(df_table7, df_table13, on="Region name", how="outer")
+df_gdp.rename(columns={"Region name": "ITL3_name"}, inplace=True)
+
+gfcf_file = "/Users/thomascarey-wilson/Downloads/experimentalregionalgfcf.xlsx"
+
+df_os = pd.read_excel(gfcf_file, sheet_name="gfcf_2.3a", header=3)
+df_os.columns = df_os.columns.str.strip()  # remove stray whitespace
+df_os = df_os[df_os["asset_detail"] == "new_obs_and_imp_nec"][["ITL3_name", "2022"]]
+df_os.rename(columns={"2022": "OSGFCF_22"}, inplace=True)
+
+df_ad = pd.read_excel(gfcf_file, sheet_name="gfcf_1.3", header=3)
+df_ad.columns = df_ad.columns.str.strip()
+df_ad = df_ad[["ITL3_name", "2022"]]
+df_ad.rename(columns={"2022": "ADGFCF_22"}, inplace=True)
+
+nomis_file = "/Users/thomascarey-wilson/Downloads/nomis_2025_04_16_160146.xlsx"
+
+df_nomis = pd.read_excel(nomis_file, sheet_name="Data", header=7)
+df_nomis = df_nomis[["nuts 2013 level 3", "Total"]]
+df_nomis.rename(columns={
+    "nuts 2013 level 3": "ITL3_name",
+    "Total": "Nomis_Total"
+}, inplace=True)
+
+df_nomis["ITL3_name"] = df_nomis["ITL3_name"].str[6:]
+df_nomis["Nomis_Total"] = pd.to_numeric(df_nomis["Nomis_Total"], errors="coerce")
+df_nomis = df_nomis.groupby("ITL3_name", as_index=False)["Nomis_Total"].sum()
+
+df_final = (
+    df_gdp
+    .merge(df_os, on="ITL3_name", how="outer")
+    .merge(df_ad, on="ITL3_name", how="outer")
+    .merge(df_nomis, on="ITL3_name", how="outer")
+)
+
+df_final.sort_values("ITL3_name", inplace=True)
+df_final.reset_index(drop=True, inplace=True)
+
+df_final.rename(columns={
+    "Table7_2022": "GDP_PH_22",
+    "Table13_2022": "ΔGDP_PH_22",
+    "Nomis_Total": "Business count"
+}, inplace=True)
+
+ai_firms_file = "/Users/thomascarey-wilson/Downloads/ai_firm_count_by_itl3regionname.csv"
+df_ai = pd.read_csv(ai_firms_file, dtype=str)
+df_ai["num_firms"] = pd.to_numeric(df_ai["num_firms"], errors="coerce")
+
+df_final = (
+    df_final
+    .merge(df_ai, left_on="ITL3_name", right_on="itl", how="outer")
+    .drop(columns=["itl"])
+)
+
+output_file = "/Users/thomascarey-wilson/Downloads/final_combined_dataset.csv"
+df_final.to_csv(output_file, index=False)
+
+print("All series (GDP, ADGFCF, OSGFCF, Nomis, AI firms) have been merged.")
+print(f"Final dataset saved to: {output_file}")
