@@ -1,0 +1,76 @@
+#code block 1
+
+import os
+import glob
+import pandas as pd
+
+ai_file_path = "/Users/thomascarey-wilson/Downloads/ai_map_annotated_orgs.csv"
+ons_folder = "/Users/thomascarey-wilson/Downloads/ONSPD_NOV_2021_UK/Data/multi_csv"
+output_path = "/Users/thomascarey-wilson/Downloads/ai_map_annotated_orgs_with_lad.csv"
+
+sample_ons_file = "/Users/thomascarey-wilson/Downloads/ONSPD_NOV_2021_UK_AB.csv"
+
+try:
+    sample_df = pd.read_csv(sample_ons_file, dtype=str, low_memory=False)
+    print("Sample ONS dataset columns:", sample_df.columns.tolist())
+except FileNotFoundError:
+    print("Sample file not found, skipping sample inspection step.")
+except pd.errors.EmptyDataError:
+    print("Sample file is empty or unreadable, skipping sample inspection step.")
+
+postcode_candidates = ["pcd", "postcode"]
+itl_candidates = ["itl", "ITL"]
+
+ai_df = pd.read_csv(ai_file_path, dtype=str)
+if "location/postcode" not in ai_df.columns:
+    raise ValueError("The AI firm concentration dataset does not contain 'location/postcode'.")
+
+ai_df.rename(columns={"location/postcode": "postcode"}, inplace=True)
+
+ons_files = glob.glob(os.path.join(ons_folder, "*.csv"))
+ons_dfs = []
+
+for file in ons_files:
+    try:
+        df = pd.read_csv(file, dtype=str, low_memory=False)
+    except Exception as e:
+        print(f"Error reading file {file}: {e}")
+        continue
+
+    found_postcode = None
+    for col in postcode_candidates:
+        if col in df.columns:
+            found_postcode = col
+            break
+    if not found_postcode:
+        print(f"Skipping file {file} - no recognized postcode column.")
+        continue
+
+    found_itl = None
+    for col in itl_candidates:
+        if col in df.columns:
+            found_itl = col
+            break
+    if not found_itl:
+        print(f"Skipping file {file} - no recognized ITL column.")
+        continue
+
+    df.rename(columns={found_postcode: "postcode", found_itl: "itl"}, inplace=True)
+    
+    ons_dfs.append(df[["postcode", "itl"]])
+
+if not ons_dfs:
+    raise ValueError("No ONS CSV files with both postcode and ITL columns were found.")
+
+ons_df = pd.concat(ons_dfs, ignore_index=True)
+ons_subset = ons_df.drop_duplicates(subset=["postcode"])
+
+ai_df["postcode_clean"] = ai_df["postcode"].astype(str).str.replace(" ", "").str.upper()
+ons_subset["postcode_clean"] = ons_subset["postcode"].astype(str).str.replace(" ", "").str.upper()
+
+merged_df = pd.merge(ai_df, ons_subset[["postcode_clean", "itl"]], on="postcode_clean", how="left")
+
+merged_df.drop(columns=["postcode_clean"], inplace=True)
+
+merged_df.to_csv(output_path, index=False)
+print("Merge complete. Output saved to:", output_path)
