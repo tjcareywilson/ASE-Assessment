@@ -1,0 +1,31 @@
+#code block 2
+
+import pandas as pd
+
+input_file  = "/Users/thomascarey-wilson/Downloads/ai_map_annotated_orgs_with_itl.csv"
+lookup_file = "/Users/thomascarey-wilson/Downloads/Local_Authority_District_(April_2023)_to_LAU1_to_ITL3_to_ITL2_to_ITL1_(January_2021)Lookup.csv"
+output_file = "/Users/thomascarey-wilson/Downloads/ai_firm_count_by_itl3regionname.csv"
+
+df = pd.read_csv(input_file, dtype=str)
+aggregated_df = df.groupby('itl').size().reset_index(name='num_firms')
+
+lookup_df = pd.read_csv(lookup_file, dtype=str)
+
+merged_df = pd.merge(
+    aggregated_df,
+    lookup_df[['LAU121CD', 'ITL321NM']],
+    left_on='itl',
+    right_on='LAU121CD',
+    how='left'
+)
+
+merged_df['itl'] = merged_df['ITL321NM'].fillna(merged_df['itl'])
+
+merged_df = merged_df.drop(columns=['LAU121CD', 'ITL321NM'])
+
+final_df = merged_df.groupby('itl', as_index=False)['num_firms'].sum()
+final_df = final_df.sort_values(by='num_firms', ascending=False)
+
+final_df.to_csv(output_file, index=False)
+
+print("Aggregation and ITL3 region name mapping complete. Output saved to:", output_file)
